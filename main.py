@@ -14,12 +14,11 @@ from PIL import Image
 from torchvision.transforms import ToTensor
 from itertools import count
 
-from scripts.util.detection.nsfw_and_watermark_dectection import \
-    DeepFloydDataFiltering
+
 from sgm.inference.helpers import embed_watermark
 from sgm.util import default, instantiate_from_config
 
-def save_sampled_images(samples, filter, output_folder):
+def save_sampled_images(samples, output_folder):
     """
     Saves given samples as images in separate folders within the specified output folder.
     Each folder is named with a zero-padded number.
@@ -33,7 +32,6 @@ def save_sampled_images(samples, filter, output_folder):
     base_count = sum(os.path.isdir(os.path.join(output_folder, d)) for d in os.listdir(output_folder))
 
     samples = embed_watermark(samples)
-    samples = filter(samples)
     images = (
         (rearrange(samples, "f c h w -> f h w c") * 255)
         .cpu()
@@ -78,30 +76,30 @@ def sample(
         num_frames = default(num_frames, 14)
         num_steps = default(num_steps, 25)
         output_folder = default(output_folder, "outputs/simple_video_sample/svd/")
-        model_config = "scripts/sampling/configs/svd.yaml"
+        model_config = "configs/svd.yaml"
     elif version == "svd_xt":
         num_frames = default(num_frames, 25)
         num_steps = default(num_steps, 30)
         output_folder = default(output_folder, "outputs/simple_video_sample/svd_xt/")
-        model_config = "scripts/sampling/configs/svd_xt.yaml"
+        model_config = "configs/svd_xt.yaml"
     elif version == "svd_image_decoder":
         num_frames = default(num_frames, 14)
         num_steps = default(num_steps, 25)
         output_folder = default(
             output_folder, "outputs/simple_video_sample/svd_image_decoder/"
         )
-        model_config = "scripts/sampling/configs/svd_image_decoder.yaml"
+        model_config = "configs/svd_image_decoder.yaml"
     elif version == "svd_xt_image_decoder":
         num_frames = default(num_frames, 25)
         num_steps = default(num_steps, 30)
         output_folder = default(
             output_folder, "outputs/simple_video_sample/svd_xt_image_decoder/"
         )
-        model_config = "scripts/sampling/configs/svd_xt_image_decoder.yaml"
+        model_config = "configs/svd_xt_image_decoder.yaml"
     else:
         raise ValueError(f"Version {version} does not exist.")
 
-    model, filter = load_model(
+    model = load_model(
         model_config,
         device,
         num_frames,
@@ -216,7 +214,7 @@ def sample(
                 samples_x = model.decode_first_stage(samples_z)
                 samples = torch.clamp((samples_x + 1.0) / 2.0, min=0.0, max=1.0)
 
-                save_sampled_images(samples, filter, output_folder)
+                save_sampled_images(samples, output_folder)
 
 
 def get_unique_embedder_keys_from_conditioner(conditioner):
@@ -286,8 +284,7 @@ def load_model(
     else:
         model = instantiate_from_config(config.model).to(device).eval()
 
-    filter = DeepFloydDataFiltering(verbose=False, device=device)
-    return model, filter
+    return model
 
 
 if __name__ == "__main__":

@@ -179,3 +179,5 @@ outputs/
 images/
 output.gif
 output/
+checkpoints/
+assets/

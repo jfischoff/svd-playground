@@ -39,3 +39,6 @@ webdataset>=0.2.33
 wheel>=0.41.0
 xformers>=0.0.20
 git+https://github.com/Stability-AI/generative-models.git@4757f164823c5e243b1ca074a7fc63d466c1fffa#egg=sgm
+
+# helper dependencies
+ffmpeg-python
