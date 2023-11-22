@@ -42,3 +42,7 @@ git+https://github.com/Stability-AI/generative-models.git@4757f164823c5e243b1ca0
 
 # helper dependencies
 ffmpeg-python
+
+# RIFE deps
+sk-video>=1.1.10 
+moviepy>=1.0.3 

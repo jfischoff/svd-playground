@@ -14,6 +14,7 @@ from PIL import Image
 from torchvision.transforms import ToTensor
 from itertools import count
 from src.video_utils import frames_to_video
+from src.rife_interpolate import run_interpolate
 
 
 from sgm.inference.helpers import embed_watermark
@@ -69,6 +70,7 @@ def sample(
     decoding_t: int = 1,  # Number of frames decoded at a time! This eats most VRAM. Reduce if necessary.
     device: str = "cuda",
     output_folder: Optional[str] = None,
+    interpolate: bool = True,
 ):
     """
     Simple script to generate a single sample conditioned on an image `input_path` or multiple images, one for each
@@ -218,7 +220,20 @@ def sample(
                 samples = torch.clamp((samples_x + 1.0) / 2.0, min=0.0, max=1.0)
 
                 image_folder = save_sampled_images(samples, output_folder)
-                frames_to_video(image_folder, image_folder + ".mp4")
+                if interpolate:
+                  interpolation_folder = image_folder + "_interpolation"
+
+                  run_interpolate(
+                      output_folder_path=interpolation_folder,
+                      input_folder_path=image_folder,)
+
+                  frames_to_video(
+                      interpolation_folder, 
+                      interpolation_folder + ".mp4", 
+                      pattern='%07d.png',
+                      frame_rate=30)  
+                else:
+                  frames_to_video(image_folder, image_folder + ".mp4")
 
 def get_unique_embedder_keys_from_conditioner(conditioner):
     return list(set([x.input_key for x in conditioner.embedders]))
