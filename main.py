@@ -13,6 +13,7 @@ from omegaconf import OmegaConf
 from PIL import Image
 from torchvision.transforms import ToTensor
 from itertools import count
+from src.video_utils import frames_to_video
 
 
 from sgm.inference.helpers import embed_watermark
@@ -53,6 +54,8 @@ def save_sampled_images(samples, output_folder):
         # Save the image in the new folder
         image_path = os.path.join(image_folder, f"{i:04d}.png")
         cv2.imwrite(image_path, frame)
+
+    return image_folder
 
 def sample(
     input_path: str = "assets/synthwave.jpg",  # Can either be image file or folder with image files
@@ -214,8 +217,8 @@ def sample(
                 samples_x = model.decode_first_stage(samples_z)
                 samples = torch.clamp((samples_x + 1.0) / 2.0, min=0.0, max=1.0)
 
-                save_sampled_images(samples, output_folder)
-
+                image_folder = save_sampled_images(samples, output_folder)
+                frames_to_video(image_folder, image_folder + ".mp4")
 
 def get_unique_embedder_keys_from_conditioner(conditioner):
     return list(set([x.input_key for x in conditioner.embedders]))
