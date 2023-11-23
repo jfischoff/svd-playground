@@ -15,6 +15,7 @@ from torchvision.transforms import ToTensor
 from itertools import count
 from src.video_utils import frames_to_video
 from src.rife_interpolate import run_interpolate
+import src.sdxl_runner as SDXL
 
 
 from sgm.inference.helpers import embed_watermark
@@ -59,7 +60,8 @@ def save_sampled_images(samples, output_folder):
     return image_folder
 
 def sample(
-    input_path: str = "assets/synthwave.jpg",  # Can either be image file or folder with image files
+    input_path = None,  # Can either be image file or folder with image files
+    prompt = None,
     num_frames: Optional[int] = None,
     num_steps: Optional[int] = None,
     version: str = "svd",
@@ -71,6 +73,16 @@ def sample(
     device: str = "cuda",
     output_folder: Optional[str] = None,
     interpolate: bool = True,
+    base_model="stabilityai/stable-diffusion-xl-base-1.0",
+    refiner="stabilityai/stable-diffusion-xl-refiner-1.0",
+    height=576,
+    width=1024,
+    prompts="",
+    negative_prompts = "(deformediris, deformed pupils, semi-realistic, cgi, 3d, render, sketch, cartoon, drawing, anime:1.4), text, close up, cropped, out of frame, worst quality, low quality, jpeg artifacts, ugly, duplicate, morbid, mutilated, extra fingers, mutated hands, poorly drawn hands, poorly drawn face, mutation, deformed, blurry, dehydrated, bad anatomy, bad proportions, extra limbs, cloned face, disfigured, gross proportions, malformed limbs, missing arms, missing legs, extra arms, extra legs, fused fingers, too many fingers, long neck",
+    dtype=torch.float16,
+    num_inference_steps = 20,
+    high_noise_frac = 0.8,  
+    seeds=42,
 ):
     """
     Simple script to generate a single sample conditioned on an image `input_path` or multiple images, one for each
@@ -103,7 +115,64 @@ def sample(
         model_config = "configs/svd_xt_image_decoder.yaml"
     else:
         raise ValueError(f"Version {version} does not exist.")
+    
+    # if the input_path and prompt are None raise
+    if input_path is None and prompts is None:
+        raise ValueError("Must provide either input_path or prompt")
 
+
+
+    all_images = []
+    if input_path is not None:
+      path = Path(input_path)
+      all_img_paths = []
+      if path.is_file():
+          if any([input_path.endswith(x) for x in ["jpg", "jpeg", "png"]]):
+              all_img_paths = [input_path]
+          else:
+              raise ValueError("Path is not valid image file.")
+      elif path.is_dir():
+          all_img_paths = sorted(
+              [
+                  f
+                  for f in path.iterdir()
+                  if f.is_file() and f.suffix.lower() in [".jpg", ".jpeg", ".png"]
+              ]
+          )
+          if len(all_img_paths) == 0:
+              raise ValueError("Folder does not contain any images.")
+      else:
+          raise ValueError
+      
+
+      for input_img_path in all_img_paths:
+          with Image.open(input_img_path) as image:
+              if image.mode == "RGBA":
+                  image = image.convert("RGB")
+              w, h = image.size
+
+              if h % 64 != 0 or w % 64 != 0:
+                  width, height = map(lambda x: x - x % 64, (w, h))
+                  image = image.resize((width, height))
+                  print(
+                      f"WARNING: Your image is of size {h}x{w} which is not divisible by 64. We are resizing to {height}x{width}!"
+                  )
+
+              all_images.append(image)
+    else:
+         all_images = SDXL.run(
+            base_model=base_model,
+            refiner=refiner,
+            prompts=prompts,
+            negative_prompts=negative_prompts,
+            height=height,
+            width=width,
+            dtype=dtype,
+            num_inference_steps=num_inference_steps,
+            high_noise_frac=high_noise_frac,
+            seeds=seeds,
+          )
+         
     model = load_model(
         model_config,
         device,
@@ -112,42 +181,9 @@ def sample(
     )
     torch.manual_seed(seed)
 
-    path = Path(input_path)
-    all_img_paths = []
-    if path.is_file():
-        if any([input_path.endswith(x) for x in ["jpg", "jpeg", "png"]]):
-            all_img_paths = [input_path]
-        else:
-            raise ValueError("Path is not valid image file.")
-    elif path.is_dir():
-        all_img_paths = sorted(
-            [
-                f
-                for f in path.iterdir()
-                if f.is_file() and f.suffix.lower() in [".jpg", ".jpeg", ".png"]
-            ]
-        )
-        if len(all_img_paths) == 0:
-            raise ValueError("Folder does not contain any images.")
-    else:
-        raise ValueError
-
-    for input_img_path in all_img_paths:
-        with Image.open(input_img_path) as image:
-            if image.mode == "RGBA":
-                image = image.convert("RGB")
-            w, h = image.size
-
-            if h % 64 != 0 or w % 64 != 0:
-                width, height = map(lambda x: x - x % 64, (w, h))
-                image = image.resize((width, height))
-                print(
-                    f"WARNING: Your image is of size {h}x{w} which is not divisible by 64. We are resizing to {height}x{width}!"
-                )
-
-            image = ToTensor()(image)
-            image = image * 2.0 - 1.0
-
+    for image in all_images:
+        image = ToTensor()(image)
+        image = image * 2.0 - 1.0
         image = image.unsqueeze(0).to(device)
         H, W = image.shape[2:]
         assert image.shape[1] == 3
