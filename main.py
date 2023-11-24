@@ -149,8 +149,8 @@ def sample(
 
       for input_img_path in all_img_paths:
           with Image.open(input_img_path) as image:
-              if image.mode == "RGBA":
-                  image = image.convert("RGB")
+              
+              image = image.convert("RGB")
               w, h = image.size
 
               if h % 64 != 0 or w % 64 != 0:
@@ -188,6 +188,7 @@ def sample(
     torch.manual_seed(seed)
 
     for image in all_images:
+        print("image type", type(image))
         image = ToTensor()(image)
         image = image * 2.0 - 1.0
         image = image.unsqueeze(0).to(device)

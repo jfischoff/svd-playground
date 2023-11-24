@@ -35,8 +35,9 @@ urllib3<1.27,>=1.25.4
 wandb>=0.15.6
 webdataset>=0.2.33
 wheel>=0.41.0
-xformers>=0.0.20
-git+https://github.com/Stability-AI/generative-models.git@4757f164823c5e243b1ca074a7fc63d466c1fffa#egg=sgm
+
+# Just stick to 0.0.20 to not have to workaround the batch bug
+xformers==0.0.20
 
 # helper dependencies
 ffmpeg-python

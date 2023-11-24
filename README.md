@@ -37,3 +37,17 @@ This will generate frames and video in the outputs folder.
 By default the `main.py` uses RIFE for interpolation. To use RIFE, download the pretrained models from [here](https://drive.google.com/file/d/1APIzVeI-4ZZCEuIRE1m6WYfSCaOsi_7_/view?usp=sharing). Unzip the files and put them in the `ECCV2020-RIFE/train_log` folder.
 
 To disable RIFE, use the `--interpolate False` argument.
+
+### `generative-models` submodule 
+
+The `generative-models` repo is added a submodule for easier experimentation. To update the submodule run:
+
+```
+git submodule update --init --recursive
+```
+
+You will also need to add `generative-models` to your python path. You can do this by running:
+
+```bash
+export PYTHONPATH=$PYTHONPATH:./generative-models
+```
