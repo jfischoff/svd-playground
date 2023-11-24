@@ -1,3 +1,7 @@
 [submodule "ECCV2022-RIFE"]
 	path = ECCV2022-RIFE
 	url = git@github.com:jfischoff/ECCV2022-RIFE.git
+
+[submodule "generative-models"]
+	path = generative-models
+	url = git@github.com:jfischoff/generative-models.git
