@@ -77,6 +77,8 @@ def sample(
     refiner="stabilityai/stable-diffusion-xl-refiner-1.0",
     height=576,
     width=1024,
+    render_height=1152,
+    render_width=2048,
     prompts="",
     negative_prompts = "(deformediris, deformed pupils, semi-realistic, cgi, 3d, render, sketch, cartoon, drawing, anime:1.4), text, close up, cropped, out of frame, worst quality, low quality, jpeg artifacts, ugly, duplicate, morbid, mutilated, extra fingers, mutated hands, poorly drawn hands, poorly drawn face, mutation, deformed, blurry, dehydrated, bad anatomy, bad proportions, extra limbs, cloned face, disfigured, gross proportions, malformed limbs, missing arms, missing legs, extra arms, extra legs, fused fingers, too many fingers, long neck",
     dtype=torch.float16,
@@ -160,18 +162,22 @@ def sample(
 
               all_images.append(image)
     else:
-         all_images = SDXL.run(
+        all_images = SDXL.run(
             base_model=base_model,
             refiner=refiner,
             prompts=prompts,
             negative_prompts=negative_prompts,
-            height=height,
-            width=width,
+            height=render_height,
+            width=render_width,
             dtype=dtype,
             num_inference_steps=num_inference_steps,
             high_noise_frac=high_noise_frac,
             seeds=seeds,
           )
+
+        if render_height != height or render_width != width:
+            for i in range(len(all_images)):
+                all_images[i] = all_images[i].resize((width, height)) 
          
     model = load_model(
         model_config,
