@@ -20,6 +20,7 @@ import src.sdxl_runner as SDXL
 from sgm.util import append_dims
 from sgm.inference.helpers import embed_watermark
 from sgm.util import default, instantiate_from_config
+from sgm.inference.helpers import Img2ImgDiscretizationWrapper
 
 def save_sampled_images(samples, output_folder):
     """
@@ -86,6 +87,7 @@ def sample(
     high_noise_frac = 0.8,  
     seeds=42,
     initial_video_path=None,
+    img2img_strength=None,
 ):
     """
     Simple script to generate a single sample conditioned on an image `input_path` or multiple images, one for each
@@ -221,6 +223,12 @@ def sample(
         value_dict["cond_frames"] = image + cond_aug * torch.randn_like(image)
         value_dict["cond_aug"] = cond_aug
 
+        if img2img_strength is not None:
+            model.sampler.discretization = Img2ImgDiscretizationWrapper(
+                model.sampler.discretization,
+                strength=img2img_strength,
+            )
+
         with torch.no_grad():
             with torch.autocast(device):
                 motion_video = None
@@ -281,13 +289,22 @@ def sample(
 
                 randn = torch.randn(shape, device=device)
                 if motion_video is not None:
-                  sigmas = model.sampler.discretization(1000)
-                  sigma = sigmas[0].to(device)
-                  print("sigma", sigma)
-                  motion_video = motion_video + randn * append_dims(sigma, motion_video.ndim)
-                  randn = motion_video / torch.sqrt(
-                      1.0 + sigma ** 2.0
-                  )  
+                  if img2img_strength is not None:
+                      sigmas = model.sampler.discretization(model.sampler.num_steps)
+                      sigma = sigmas[0].to(device)
+
+                      motion_video = motion_video + randn * append_dims(sigma, motion_video.ndim)
+                      randn = motion_video / torch.sqrt(
+                          1.0 + sigmas[0] ** 2.0
+                      )  # Note: hardcoded to DDPM-like scaling. need to generalize later.                                          
+                  else:
+                    sigmas = model.sampler.discretization(1000)
+                    sigma = sigmas[0].to(device)
+                    print("sigma", sigma)
+                    motion_video = motion_video + randn * append_dims(sigma, motion_video.ndim)
+                    randn = motion_video / torch.sqrt(
+                        1.0 + sigma ** 2.0
+                    )  
 
                 additional_model_inputs = {}
                 additional_model_inputs["image_only_indicator"] = torch.zeros(
