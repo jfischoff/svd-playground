@@ -16,10 +16,12 @@ from itertools import count
 from src.video_utils import frames_to_video
 from src.rife_interpolate import run_interpolate
 import src.sdxl_runner as SDXL
+from sgm.modules.diffusionmodules.sampling import EulerEDMSamplerWithCaching
 
 
 from sgm.inference.helpers import embed_watermark
 from sgm.util import default, instantiate_from_config
+from sgm.modules.globals import set_bank_state
 
 def save_sampled_images(samples, output_folder):
     """
@@ -81,10 +83,11 @@ def sample(
     render_width=2048,
     prompts="",
     negative_prompts = "(deformediris, deformed pupils, semi-realistic, cgi, 3d, render, sketch, cartoon, drawing, anime:1.4), text, close up, cropped, out of frame, worst quality, low quality, jpeg artifacts, ugly, duplicate, morbid, mutilated, extra fingers, mutated hands, poorly drawn hands, poorly drawn face, mutation, deformed, blurry, dehydrated, bad anatomy, bad proportions, extra limbs, cloned face, disfigured, gross proportions, malformed limbs, missing arms, missing legs, extra arms, extra legs, fused fingers, too many fingers, long neck",
-    dtype=torch.float16,
+    dtype=torch.float32,
     num_inference_steps = 20,
     high_noise_frac = 0.8,  
     seeds=42,
+    motion_video_path=None,
 ):
     """
     Simple script to generate a single sample conditioned on an image `input_path` or multiple images, one for each
@@ -184,12 +187,13 @@ def sample(
         device,
         num_frames,
         num_steps,
-    )
+    ).to(dtype=dtype)
+    
     torch.manual_seed(seed)
 
     for image in all_images:
         print("image type", type(image))
-        image = ToTensor()(image)
+        image = ToTensor()(image).to(dtype=dtype)
         image = image * 2.0 - 1.0
         image = image.unsqueeze(0).to(device)
         H, W = image.shape[2:]
@@ -220,8 +224,45 @@ def sample(
         value_dict["cond_frames"] = image + cond_aug * torch.randn_like(image)
         value_dict["cond_aug"] = cond_aug
 
+
+
+          
         with torch.no_grad():
             with torch.autocast(device):
+                motion_video = None
+                if motion_video_path is not None:
+                    # only take the first num_frames
+                    # load the video mp4 and convert to a tensor
+                    cap = cv2.VideoCapture(motion_video_path)
+                    frames = []
+                    frame_count = 0
+                    while cap.isOpened():
+                        if frame_count >= num_frames:
+                            break
+                        ret, frame = cap.read()
+                        if ret:
+                            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                            frame = ToTensor()(frame)
+                            frame = frame * 2.0 - 1.0
+                            frames.append(frame)
+                            frame_count += 1
+                        else:
+                            break
+                        
+                    motion_video = torch.stack(frames).to(device=device, dtype=dtype)
+
+                    print("motion_video.shape", motion_video.shape)
+
+                    # encode the video 
+                    encoded_frames = []
+                    for i in range(motion_video.shape[0]):
+                        encoded_frame = model.encode_first_stage(motion_video[i].unsqueeze(0))
+                        encoded_frames.append(encoded_frame)
+
+                    motion_video = torch.concat(encoded_frames, dim=0)
+                    print("motion_video.shape", motion_video.shape)
+
+
                 batch, batch_uc = get_batch(
                     get_unique_embedder_keys_from_conditioner(model.conditioner),
                     value_dict,
@@ -244,20 +285,35 @@ def sample(
                     c[k] = repeat(c[k], "b ... -> b t ...", t=num_frames)
                     c[k] = rearrange(c[k], "b t ... -> (b t) ...", t=num_frames)
 
-                randn = torch.randn(shape, device=device)
+                print("shape", shape)
+                randn = torch.randn(shape, device=device, dtype=dtype)
 
                 additional_model_inputs = {}
                 additional_model_inputs["image_only_indicator"] = torch.zeros(
                     2, num_frames
-                ).to(device)
+                ).to(device=device, dtype=dtype)
                 additional_model_inputs["num_video_frames"] = batch["num_video_frames"]
+                if motion_video is not None:
+                    old_sampler = model.sampler
+                    model.sampler = EulerEDMSamplerWithCaching.from_EDMSampler(old_sampler)
+
+                print("model class" , model.__class__)
+                print("model.model class", model.model.__class__)
+                print("model.denoiser class", model.denoiser.__class__)
+                print("model.sampler class", model.sampler.__class__)
 
                 def denoiser(input, sigma, c):
                     return model.denoiser(
                         model.model, input, sigma, c, **additional_model_inputs
                     )
 
+                if motion_video is not None:
+                    set_bank_state("write")
+                    model.sampler(denoiser, motion_video, cond=c, uc=uc, cache=True)
+                    set_bank_state("read")
+                    
                 samples_z = model.sampler(denoiser, randn, cond=c, uc=uc)
+                print("samples_z dtype", samples_z.dtype)
                 model.en_and_decode_n_samples_a_time = decoding_t
                 samples_x = model.decode_first_stage(samples_z)
                 samples = torch.clamp((samples_x + 1.0) / 2.0, min=0.0, max=1.0)
