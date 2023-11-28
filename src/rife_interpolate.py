@@ -320,7 +320,7 @@ def run_interpolate(output_folder_path=None,
       # make the output folder if it doesn't exist
       os.makedirs(output_folder_path, exist_ok=True)
 
-      args = Args(exp=4,
+      args = Args(exp=2,
                   img=input_folder_path, 
                   output=output_folder_path, 
                   png=True, 
